@@ -4,6 +4,8 @@ using CourseLibraryApi.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,10 +26,57 @@ namespace CourseLibraryApi
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            //Todo: Implement CORS
+
             services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
             services.AddControllers(
                 setupAction => setupAction.ReturnHttpNotAcceptable = true)
-                 .AddXmlDataContractSerializerFormatters();
+                 .AddXmlDataContractSerializerFormatters()
+                 .ConfigureApiBehaviorOptions(setupAction =>
+                 {
+                     setupAction.InvalidModelStateResponseFactory = context =>
+                     {
+                         // Create a problems details object
+                         var problemDetailsFactory = context.HttpContext.RequestServices
+                         .GetRequiredService<ProblemDetailsFactory>();
+
+                         var problemDetails = problemDetailsFactory.CreateValidationProblemDetails(
+                             context.HttpContext,
+                             context.ModelState);
+
+                         // add info not added by default
+                         problemDetails.Detail = "See the error field for details";
+                         problemDetails.Instance = context.HttpContext.Request.Path;
+
+                         // find out which status codes to use
+                         var actionExecutingContext =
+                         context as Microsoft.AspNetCore.Mvc.Filters.ActionExecutingContext;
+
+                         // if there are model state errors and all arguments are correctly found/parsed
+                         // then we are dealing with validation errors
+                         if ((context.ModelState.ErrorCount > 0) &&
+                         (actionExecutingContext?.ActionArguments.Count ==
+                         context.ActionDescriptor.Parameters.Count))
+                         {
+                             problemDetails.Type = "https://courselibrary.com/modelvalidationproblem";
+                             problemDetails.Status = StatusCodes.Status422UnprocessableEntity;
+                             problemDetails.Title = "One or more validation errors occured.";
+
+                             return new UnprocessableEntityObjectResult(problemDetails)
+                             {
+                                 ContentTypes = { "application/problem+json" }
+                             };
+                         }
+                         // if one of the arguments wasn't correctly found / couldn't be parsed
+                         // we're dealing with null/unparseable input
+                         problemDetails.Status = StatusCodes.Status400BadRequest;
+                         problemDetails.Title = "One or more errors on input occurred.";
+                         return new BadRequestObjectResult(problemDetails)
+                         {
+                             ContentTypes = { "application/problem+json" }
+                         };
+                     };
+                 });
 
             services.AddScoped<ICourseLibraryRepository, CourseLibraryRepository>();
 
@@ -59,9 +108,7 @@ namespace CourseLibraryApi
             }
 
             app.UseRouting();
-
             app.UseAuthorization();
-
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
