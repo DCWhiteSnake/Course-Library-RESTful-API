@@ -1,5 +1,6 @@
 ﻿using CourseLibraryApi.DbContexts;
 using CourseLibraryApi.Entities;
+using CourseLibraryApi.Helpers;
 using CourseLibraryApi.ResourceParameters;
 using System;
 using System.Collections.Generic;
@@ -120,7 +121,7 @@ namespace CourseLibraryApi.Services
 
         public IEnumerable<Author> GetAuthors()
         {
-            return _context.Authors.ToList<Author>();
+            return _context.Authors.ToList();
         }
 
         public IEnumerable<Author> GetAuthors(IEnumerable<Guid> authorIds)
@@ -143,30 +144,34 @@ namespace CourseLibraryApi.Services
                 .ToList();
         }
 
-        public IEnumerable<Author> GetAuthors(AuthorsResourceParameters authorsResourceParameters)
+        public PagedList<Author> GetAuthors(AuthorsResourceParameters authorsResourceParameters)
         {
             if (authorsResourceParameters == null)
             {
                 throw new ArgumentNullException(nameof(authorsResourceParameters));
             }
-            if (string.IsNullOrWhiteSpace(authorsResourceParameters.MainCategory) && string.IsNullOrWhiteSpace(authorsResourceParameters.QueryString))
-                return GetAuthors();
 
             var collection = _context.Authors as IQueryable<Author>;
-
-            if (!string.IsNullOrWhiteSpace(authorsResourceParameters.QueryString))
-            {
-                var queryString = authorsResourceParameters.QueryString.Trim();
-                collection = collection.Where(a => a.MainCategory.Contains(queryString)
-                || a.FirstName.Contains(queryString) || a.LastName.Contains(queryString));
-            }
 
             if (!string.IsNullOrWhiteSpace(authorsResourceParameters.MainCategory))
             {
                 var mainCategory = authorsResourceParameters.MainCategory.Trim();
-                collection = collection.Where(x => x.MainCategory == mainCategory);
+                collection = collection.Where(a => a.MainCategory == mainCategory);
             }
-            return collection.ToList();
+
+            if (!string.IsNullOrWhiteSpace(authorsResourceParameters.SearchQuery))
+            {
+                var searchQuery = authorsResourceParameters.SearchQuery.Trim();
+                collection = collection.Where(a => a.MainCategory.Contains(searchQuery)
+                    || a.FirstName.Contains(searchQuery)
+                    || a.LastName.Contains(searchQuery));
+            }
+            if (!string.IsNullOrWhiteSpace(authorsResourceParameters.OrderBy))
+            {
+                collection = collection.OrderBy(a => a.FirstName).ThenBy(a => a.LastName);
+            }
+            return PagedList<Author>.Create(collection, authorsResourceParameters.PageNumber,
+                authorsResourceParameters.PageSize);
         }
 
         public void UpdateAuthor(Author author)

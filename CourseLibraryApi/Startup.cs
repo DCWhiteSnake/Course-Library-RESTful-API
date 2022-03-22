@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Newtonsoft.Json.Serialization;
 using System;
 
 namespace CourseLibraryApi
@@ -31,7 +32,12 @@ namespace CourseLibraryApi
             services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
             services.AddControllers(
                 setupAction => setupAction.ReturnHttpNotAcceptable = true)
-                 .AddXmlDataContractSerializerFormatters()
+                 .AddNewtonsoftJson(setupAction =>
+                 {
+                     setupAction.SerializerSettings.ContractResolver =
+                        new CamelCasePropertyNamesContractResolver();
+                 })
+                  .AddXmlDataContractSerializerFormatters()
                  .ConfigureApiBehaviorOptions(setupAction =>
                  {
                      setupAction.InvalidModelStateResponseFactory = context =>
@@ -61,7 +67,6 @@ namespace CourseLibraryApi
                              problemDetails.Type = "https://courselibrary.com/modelvalidationproblem";
                              problemDetails.Status = StatusCodes.Status422UnprocessableEntity;
                              problemDetails.Title = "One or more validation errors occured.";
-
                              return new UnprocessableEntityObjectResult(problemDetails)
                              {
                                  ContentTypes = { "application/problem+json" }
